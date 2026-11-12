@@ -34,7 +34,8 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 	function get_local_attachments() {
 		global $wpdb;
 		$prefix = $wpdb->prefix;
-		$temp_prefix = stripslashes( $_POST['temp_prefix'] );
+		$temp_prefix = stripslashes( isset( $_POST['temp_prefix'] ) ? $_POST['temp_prefix'] : '' );
+		$local_tables = array();
 
 		/*
 		* We determine which media files need migrating BEFORE the database migration is finalized.
@@ -143,11 +144,17 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 		$upload_dir = untrailingslashit( $this->uploads_dir() );
 		if( ! file_exists( $upload_dir ) ) return array();
 
-		$files = new RecursiveIteratorIterator( new RecursiveDirectoryIterator( $upload_dir ), RecursiveIteratorIterator::SELF_FIRST );
+		// Files only (no directories or dot entries): smaller listings to send and compare.
+		$files = new RecursiveIteratorIterator(
+			new RecursiveDirectoryIterator( $upload_dir, FilesystemIterator::SKIP_DOTS ),
+			RecursiveIteratorIterator::LEAVES_ONLY,
+			RecursiveIteratorIterator::CATCH_GET_CHILD
+		);
 		$local_media = array();
+		$prefix_len = strlen( $upload_dir . DS );
 
 		foreach( $files as $name => $object ){
-			$name = str_replace( array( $upload_dir . DS, '\\' ), array( '', '/' ), $name );
+			$name = str_replace( '\\', '/', substr( $name, $prefix_len ) );
 			$local_media[$name] = $object->getSize();
 		}
 
@@ -178,13 +185,16 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 
 		$upload_dir = $this->uploads_dir();
 
+		$files_to_download = array_values( (array) $files_to_download );
+		$downloads = empty( $parsed['user'] ) ? $this->download_urls_parallel( $remote_uploads_url, $files_to_download ) : array();
+
 		$errors = array();
 		foreach( $files_to_download as $file_to_download ) {
-			$temp_file_path = $this->download_url( $remote_uploads_url . $file_to_download );
+			$temp_file_path = isset( $downloads[ $file_to_download ] ) ? $downloads[ $file_to_download ] : $this->download_url( $remote_uploads_url . $file_to_download );
 
 			if( is_wp_error( $temp_file_path ) ) {
 				$download_error = $temp_file_path->get_error_message();
-				$errors[] = __( sprintf( 'Could not download file: %1$s - %2$s', $remote_uploads_url . $file_to_download, $download_error ), 'wp-sync-db-media-files' );
+				$errors[] = sprintf( __( 'Could not download file: %1$s - %2$s', 'ag-wp-sync-db-media-files' ), esc_html( $remote_uploads_url . $file_to_download ), esc_html( $download_error ) );
 				continue;
 			}
 
@@ -196,16 +206,16 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 			if( false === $move_result ) {
 				$folder = dirname( $new_path );
 				if( @file_exists( $folder ) ) {
-					$errors[] =  __( sprintf( 'Error attempting to move downloaded file. Temp path: %1$s - New Path: %2$s', $temp_file_path, $new_path ), 'wp-sync-db-media-files' ) . ' (#103mf)';
+					$errors[] =  __( sprintf( 'Error attempting to move downloaded file. Temp path: %1$s - New Path: %2$s', $temp_file_path, $new_path ), 'ag-wp-sync-db-media-files' ) . ' (#103mf)';
 				}
 				else{
 					if( false === @mkdir( $folder, 0755, true ) ) {
-						$errors[] =  __( sprintf( 'Error attempting to create required directory: %s', $folder ), 'wp-sync-db-media-files' ) . ' (#104mf)';
+						$errors[] =  __( sprintf( 'Error attempting to create required directory: %s', $folder ), 'ag-wp-sync-db-media-files' ) . ' (#104mf)';
 					}
 					else {
 						$move_result = @rename( $temp_file_path, $new_path );
 						if( false === $move_result ) {
-							$errors[] =  __( sprintf( 'Error attempting to move downloaded file. Temp path: %1$s - New Path: %2$s', $temp_file_path, $new_path ), 'wp-sync-db-media-files' ) . ' (#105mf)';
+							$errors[] =  __( sprintf( 'Error attempting to move downloaded file. Temp path: %1$s - New Path: %2$s', $temp_file_path, $new_path ), 'ag-wp-sync-db-media-files' ) . ' (#105mf)';
 						}
 					}
 				}
@@ -270,7 +280,7 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 		if( ! isset( $_FILES['media'] ) ) {
 			$return = array(
 				'wpsdb_error' 	=> 1,
-				'body'			=> __( '$_FILES is empty, the upload appears to have failed', 'wp-sync-db-media-files' ) . ' (#106mf)',
+				'body'			=> __( '$_FILES is empty, the upload appears to have failed', 'ag-wp-sync-db-media-files' ) . ' (#106mf)',
 			);
 			$result = $this->end_ajax( serialize( $return ) );
 			return $result;
@@ -287,13 +297,13 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 			$folder = dirname( $destination );
 
 			if( false === @file_exists( $folder ) && false === @mkdir( $folder, 0755, true ) ) {
-				$errors[] = __( sprintf( 'Error attempting to create required directory: %s', $folder ), 'wp-sync-db-media-files' ) . ' (#108mf)';
+				$errors[] = __( sprintf( 'Error attempting to create required directory: %s', $folder ), 'ag-wp-sync-db-media-files' ) . ' (#108mf)';
 				++$i;
 				continue;
 			}
 
 			if( false === @move_uploaded_file( $file['tmp_name'], $destination ) ) {
-				$errors[] = __( sprintf( 'A problem occurred when attempting to move the temp file "%1$s" to "%2$s"', $file['tmp_name'], $destination ), 'wp-sync-db-media-files' ) . ' (#107mf)';
+				$errors[] = __( sprintf( 'A problem occurred when attempting to move the temp file "%1$s" to "%2$s"', $file['tmp_name'], $destination ), 'ag-wp-sync-db-media-files' ) . ' (#107mf)';
 			}
 			++$i;
 		}
@@ -344,7 +354,7 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 		$return['remote_uploads_url'] = $response['remote_uploads_url'];
 
 		// remove local/remote media if it doesn't exist on the local/remote site
-		if( $_POST['remove_local_media'] == '1' ) {
+		if( isset( $_POST['remove_local_media'] ) && $_POST['remove_local_media'] == '1' ) {
 			if( $_POST['intent'] == 'pull' ) {
 				$this->remove_local_attachments( $remote_attachments );
 			}
@@ -379,7 +389,7 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 		if( false === $remote_attachments ) {
 			$return = array(
 				'wpsdb_error' 	=> 1,
-				'body'			=> __( 'Error attempting to unserialize the remote attachment data', 'wp-sync-db-media-files' ) . ' (#110mf)',
+				'body'			=> __( 'Error attempting to unserialize the remote attachment data', 'ag-wp-sync-db-media-files' ) . ' (#110mf)',
 			);
 			$result = $this->end_ajax( serialize( $return ) );
 			return $result;
@@ -390,7 +400,7 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 		$return = array(
 			'success' 	=> 1,
 		);
-		$result = serialize( json_encode( $return ) );
+		$result = $this->end_ajax( serialize( $return ) );
 		return $result;
 	}
 
@@ -415,9 +425,16 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 	}
 
 	function media_diff( $site_a_attachments, $site_b_attachments, $site_a_media, $site_b_media ) {
-		foreach( $site_b_attachments as $attachment ) {
-			$local_attachment_key = $this->multidimensional_search( array( 'file' => $attachment['file'] ), $site_a_attachments );
-			if( false === $local_attachment_key ) continue;
+		// Index once by file path instead of a linear search per attachment (was O(n^2) on large libraries).
+		$site_a_index = array();
+		foreach( (array) $site_a_attachments as $key => $attachment ) {
+			if ( isset( $attachment['file'] ) && ! isset( $site_a_index[ $attachment['file'] ] ) ) {
+				$site_a_index[ $attachment['file'] ] = $key;
+			}
+		}
+		foreach( (array) $site_b_attachments as $attachment ) {
+			if( ! isset( $attachment['file'], $site_a_index[ $attachment['file'] ] ) ) continue;
+			$local_attachment_key = $site_a_index[ $attachment['file'] ];
 			$remote_timestamp = strtotime( $attachment['date'] );
 			$local_timestamp = strtotime( $site_a_attachments[$local_attachment_key]['date'] );
 			if( $local_timestamp >= $remote_timestamp ) {
@@ -497,16 +514,16 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 	function load_assets() {
 		$plugins_url = trailingslashit( plugins_url() ) . trailingslashit( $this->plugin_folder_name );
 		$src = $plugins_url . 'asset/js/script.js';
-		$version = defined('SCRIPT_DEBUG') && SCRIPT_DEBUG ? time() : $this->plugin_version;
+		$version = defined('SCRIPT_DEBUG') && SCRIPT_DEBUG ? time() : AG_WPSDB_MF_VERSION;
 		wp_enqueue_script( 'wp-sync-db-media-files-script', $src, array( 'jquery', 'wp-sync-db-common', 'wp-sync-db-hook', 'wp-sync-db-script' ), $version, true );
 
 		wp_localize_script( 'wp-sync-db-media-files-script', 'wpsdbmf_strings', array(
-			'determining'				=> __( "Determining which media files to migrate, please wait...", 'wp-sync-db-media-files' ),
-			'error_determining'			=> __( "Error while attempting to determine which media files to migrate.", 'wp-sync-db-media-files' ),
-			'migration_failed'			=> __( "Migration failed", 'wp-sync-db-media-files' ),
-			'problem_migrating_media'	=> __( "A problem occurred when migrating the media files.", 'wp-sync-db-media-files' ),
-			'media_files'				=> __( "Media Files", 'wp-sync-db-media-files' ),
-			'migrating_media_files'		=> __( "Migrating media files", 'wp-sync-db-media-files' ),
+			'determining'				=> __( "Determining which media files to migrate, please wait...", 'ag-wp-sync-db-media-files' ),
+			'error_determining'			=> __( "Error while attempting to determine which media files to migrate.", 'ag-wp-sync-db-media-files' ),
+			'migration_failed'			=> __( "Migration failed", 'ag-wp-sync-db-media-files' ),
+			'problem_migrating_media'	=> __( "A problem occurred when migrating the media files.", 'ag-wp-sync-db-media-files' ),
+			'media_files'				=> __( "Media Files", 'ag-wp-sync-db-media-files' ),
+			'migrating_media_files'		=> __( "Migrating media files", 'ag-wp-sync-db-media-files' ),
 		) );
 
 	}
@@ -514,6 +531,7 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 	function establish_remote_connection_data( $data ) {
 		$data['media_files_available'] = '1';
 		$data['media_files_version'] = $this->plugin_version;
+		$data['ag_media_files_version'] = AG_WPSDB_MF_VERSION;
 		if( function_exists( 'ini_get' ) ) {
 			$max_file_uploads = ini_get( 'max_file_uploads' );
 		}
@@ -555,14 +573,64 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 		return $clean_blogs;
 	}
 
+	/**
+	 * Download a batch of files at the same time. Returns file => temp path or WP_Error.
+	 * Falls back to one-at-a-time downloads (an empty result) when the Requests library isn't available.
+	 */
+	function download_urls_parallel( $base_url, $files, $timeout = 300 ) {
+		if ( count( $files ) < 2 || ! class_exists( '\\WpOrg\\Requests\\Requests' ) || ! apply_filters( 'ag_wpsdb_parallel_media_downloads', true ) ) {
+			return array();
+		}
+
+		$requests = array();
+		$results = array();
+		foreach ( $files as $file ) {
+			$tmp = wp_tempnam( $file );
+			if ( ! $tmp ) continue;
+			$results[ $file ] = $tmp;
+			$requests[ $file ] = array(
+				'url'     => $base_url . $file,
+				'type'    => 'GET',
+				'options' => array(
+					'timeout'   => $timeout,
+					'filename'  => $tmp,
+					'verify'    => ABSPATH . WPINC . '/certificates/ca-bundle.crt',
+					'useragent' => 'WordPress/' . get_bloginfo( 'version' ) . '; ' . home_url(),
+				),
+			);
+		}
+
+		try {
+			$responses = \WpOrg\Requests\Requests::request_multiple( $requests );
+		} catch ( Throwable $e ) {
+			foreach ( $results as $tmp ) @unlink( $tmp );
+			return array();
+		}
+
+		foreach ( $results as $file => $tmp ) {
+			$response = isset( $responses[ $file ] ) ? $responses[ $file ] : null;
+			if ( $response instanceof \WpOrg\Requests\Response && 200 == $response->status_code ) {
+				continue;
+			}
+			@unlink( $tmp );
+			if ( $response instanceof \WpOrg\Requests\Response ) {
+				$results[ $file ] = new WP_Error( 'http_' . $response->status_code, trim( (string) $response->status_code ) );
+			} else {
+				$results[ $file ] = new WP_Error( 'http_request_failed', $response instanceof Throwable ? $response->getMessage() : 'Unknown error' );
+			}
+		}
+
+		return $results;
+	}
+
 	function download_url( $url, $timeout = 300 ) {
 		//WARNING: The file is not automatically deleted, The script must unlink() the file.
 		if ( ! $url )
-			return new WP_Error('http_no_url', __('Invalid URL Provided.'));
+			return new WP_Error('http_no_url', __('Invalid URL Provided.', 'ag-wp-sync-db-media-files'));
 
 		$tmpfname = wp_tempnam($url);
 		if ( ! $tmpfname )
-			return new WP_Error('http_no_file', __('Could not create Temporary file.'));
+			return new WP_Error('http_no_file', __('Could not create Temporary file.', 'ag-wp-sync-db-media-files'));
 
 		$response = wp_remote_get( $url, array( 'timeout' => $timeout, 'stream' => true, 'filename' => $tmpfname, 'reject_unsafe_urls' => false ) );
 
@@ -619,7 +687,7 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 		if ( !isset( $profile['media_files'] ) || '1' !== $profile['media_files'] ) return $outcome;
 
 		if ( !isset( $verify_connection_response['media_files_max_file_uploads'] ) ) {
-			return $wpsdb_cli->cli_error( __( 'WP Sync DB Media Files does not seems to be installed/active on the remote website.', 'wp-sync-db-media-files' ) );
+			return $wpsdb_cli->cli_error( __( 'WP Sync DB Media Files does not seems to be installed/active on the remote website.', 'ag-wp-sync-db-media-files' ) );
 		}
 
 		$this->set_time_limit();
