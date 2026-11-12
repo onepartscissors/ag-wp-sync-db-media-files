@@ -42,7 +42,7 @@ Then tick "Media Files" on the Migrate DB screen when you push or pull.
 ## Credits
 
 - Original addon: [WP Sync DB Media Files](https://github.com/wp-sync-db/wp-sync-db-media-files) by Sean Lang, based on the WP Migrate DB Pro Media Files addon by Delicious Brains.
-- This fork: Ash Glover.
+- This fork: [Ash Glover](https://www.ashglover.co.za).
 
 ## License
 
