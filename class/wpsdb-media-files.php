@@ -2,6 +2,8 @@
 class WPSDB_Media_Files extends WPSDB_Addon {
 	protected $files_to_migrate;
 	protected $responding_to_get_remote_media_listing = false;
+	public $cli_media_count = 0;
+	public $cli_media_bytes = 0;
 
 	function __construct( $plugin_file_path ) {
 		parent::__construct( $plugin_file_path );
@@ -117,7 +119,7 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 		}
 		$upload_dir = str_replace( basename( $attachment['file'] ), '', $attachment['file'] );
 		if ( ! empty( $attachment['metadata'] ) ) {
-			$attachment['metadata'] = @unserialize( $attachment['metadata'] );
+			$attachment['metadata'] = @unserialize( $attachment['metadata'], array( 'allowed_classes' => false ) );
 			if ( ! empty( $attachment['metadata']['sizes'] ) && is_array( $attachment['metadata']['sizes'] ) ) {
 				foreach ( $attachment['metadata']['sizes'] as $size ) {
 					if ( empty( $size['file'] ) ) continue;
@@ -289,7 +291,7 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 		$upload_dir = $this->uploads_dir();
 
 		$files = $this->diverse_array( $_FILES['media'] );
-		$file_paths = unserialize( $filtered_post['files'] );
+		$file_paths = unserialize( $filtered_post['files'], array( 'allowed_classes' => false ) );
 		$i = 0;
 		$errors = array();
 		foreach( $files as &$file ) {
@@ -385,7 +387,7 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 			return $result;
 		}
 
-		$remote_attachments = @unserialize( $filtered_post['remote_attachments'] );
+		$remote_attachments = @unserialize( $filtered_post['remote_attachments'], array( 'allowed_classes' => false ) );
 		if( false === $remote_attachments ) {
 			$return = array(
 				'wpsdb_error' 	=> 1,
@@ -666,7 +668,7 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 			return $result;
 		}
 
-		$response = unserialize( trim( $response ) );
+		$response = unserialize( trim( $response ), array( 'allowed_classes' => false ) );
 
 		if ( isset( $response['wpsdb_error'] ) ) {
 			$result = $this->end_ajax( json_encode( $response ) );
@@ -712,33 +714,31 @@ class WPSDB_Media_Files extends WPSDB_Addon {
 		// seems like this value needs to be different depending on pull/push?
 		$bottleneck = $wpsdb->get_bottleneck();
 
-		while ( !empty( $files_to_migrate ) ) {
+		$max_files = max( 1, (int) $verify_connection_response['media_files_max_file_uploads'] );
+		$this->cli_media_count = count( $files_to_migrate );
+		$this->cli_media_bytes = array_sum( $files_to_migrate );
+		do_action( 'ag_wpsdb_cli_media_start', $this->cli_media_count, $this->cli_media_bytes );
+
+		// Send files in batches limited by request size and the remote max_file_uploads.
+		// (The original sent a growing batch once per file, re-sending files many times.)
+		while ( ! empty( $files_to_migrate ) ) {
 			$file_chunk_to_migrate = array();
 			$file_chunk_size = 0;
-			$number_of_files_to_migrate = 0;
 			foreach ( $files_to_migrate as $file_to_migrate => $file_size ) {
-				if ( empty( $file_chunk_to_migrate ) ) {
-					$file_chunk_to_migrate[] = $file_to_migrate;
-					$file_chunk_size += $file_size;
-					unset( $files_to_migrate[$file_to_migrate] );
-					++$number_of_files_to_migrate;
-				} else {
-					if ( ( $file_chunk_size + $file_size ) > $bottleneck || $number_of_files_to_migrate >= $verify_connection_response['media_files_max_file_uploads'] ) {
-						break;
-					} else {
-						$file_chunk_to_migrate[] = $file_to_migrate;
-						$file_chunk_size += $file_size;
-						unset( $files_to_migrate[$file_to_migrate] );
-						++$number_of_files_to_migrate;
-					}
+				if ( ! empty( $file_chunk_to_migrate ) && ( ( $file_chunk_size + $file_size ) > $bottleneck || count( $file_chunk_to_migrate ) >= $max_files ) ) {
+					break;
 				}
-
-				$_POST['file_chunk'] = $file_chunk_to_migrate;
-				$_POST['remote_uploads_url'] = $remote_uploads_url;
-
-				$response = $this->ajax_migrate_media();
-				if( is_wp_error( $migrate_media_response = $wpsdb_cli->verify_cli_response( $response, 'ajax_migrate_media()' ) ) ) return $migrate_media_response;
+				$file_chunk_to_migrate[] = $file_to_migrate;
+				$file_chunk_size += $file_size;
+				unset( $files_to_migrate[ $file_to_migrate ] );
 			}
+
+			$_POST['file_chunk'] = $file_chunk_to_migrate;
+			$_POST['remote_uploads_url'] = $remote_uploads_url;
+
+			$response = $this->ajax_migrate_media();
+			if( is_wp_error( $migrate_media_response = $wpsdb_cli->verify_cli_response( $response, 'ajax_migrate_media()' ) ) ) return $migrate_media_response;
+			do_action( 'ag_wpsdb_cli_media_batch', count( $file_chunk_to_migrate ), count( $files_to_migrate ) );
 		}
 		return true;
 	}

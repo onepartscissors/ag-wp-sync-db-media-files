@@ -2,6 +2,18 @@
 
 All notable changes to AG WP Sync DB Media Files. Versions follow [semver](https://semver.org/).
 
+## [2.1.0] - 2026-11-12
+
+### Added
+- Media sync for the `wp agsdb pull/push --media` command in AG WP Sync DB 2.1.0.
+- AGENTS.md and CLAUDE.md.
+
+### Fixed
+- Command-line media sync sent a growing batch once per file, so files were uploaded or downloaded many times. It now sends proper batches.
+
+### Security
+- Data received from the other site is unserialized with `allowed_classes => false`.
+
 ## [2.0.0] - 2026-11-12
 
 First release of the fork, based on [wp-sync-db-media-files](https://github.com/wp-sync-db/wp-sync-db-media-files) 1.1.4b1.
