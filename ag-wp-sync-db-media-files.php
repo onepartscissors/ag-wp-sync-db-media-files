@@ -5,7 +5,7 @@ Plugin URI: https://github.com/onepartscissors/ag-wp-sync-db-media-files
 Description: Media files addon for AG WP Sync DB. Fork of WP Sync DB Media Files with PHP 8 fixes and faster media syncs.
 Author: Ash Glover
 Author URI: https://www.ashglover.co.za
-Version: 2.1.0
+Version: 2.1.1
 Requires at least: 5.6
 Requires PHP: 7.4
 Requires Plugins: ag-wp-sync-db

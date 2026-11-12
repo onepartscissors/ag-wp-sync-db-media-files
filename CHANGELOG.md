@@ -2,6 +2,11 @@
 
 All notable changes to AG WP Sync DB Media Files. Versions follow [semver](https://semver.org/).
 
+## [2.1.1] - 2026-11-12
+
+### Changed
+- AGENTS.md: testing instructions no longer name a specific site.
+
 ## [2.1.0] - 2026-11-12
 
 ### Added
